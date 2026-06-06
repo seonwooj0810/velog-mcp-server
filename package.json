@@ -19,7 +19,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "velog-mcp-server": "./dist/index.js"
+    "velog-mcp-server": "dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
