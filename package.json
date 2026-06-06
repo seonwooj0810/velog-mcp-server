@@ -1,19 +1,25 @@
 {
-  "name": "velog-mcp",
+  "name": "velog-mcp-server",
   "version": "0.1.0",
-  "description": "",
+  "description": "Velog GraphQL API를 노출하는 stdio 기반 MCP 서버 (Claude Code/Desktop용)",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "mcp",
+    "velog",
+    "model-context-protocol",
+    "claude"
+  ],
+  "author": "seonwoojung",
+  "license": "MIT",
   "type": "module",
   "bin": {
-    "velog-mcp": "./dist/index.js"
+    "velog-mcp-server": "./dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -22,5 +28,15 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "typescript": "^6.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seonwooj0810/velog-mcp-server.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
   }
 }
