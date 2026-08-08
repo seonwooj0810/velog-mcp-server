@@ -30,22 +30,32 @@ npm run build   # 또는 npx tsc
 
 산출물: `dist/index.js` (shebang 포함, stdio MCP 서버).
 
-## VELOG_ACCESS_TOKEN 얻기
+## 토큰 얻기
 
 Velog는 공식 토큰 발급 API가 없으므로 브라우저 쿠키에서 가져온다.
 
 1. Chrome/Safari에서 https://velog.io 로그인
 2. DevTools → Application → Cookies → `https://velog.io`
-3. **`access_token`** 항목의 Value 복사
-4. 만료 시 (보통 1시간) 다시 추출
+3. **`access_token`** (1시간 유효) 과 **`refresh_token`** (30일 유효) 값 모두 복사
 
 > 토큰은 로그인 세션 전체에 접근 가능한 자격증명이다. 노출되지 않도록 주의.
+
+### 자동 재발급
+
+`VELOG_REFRESH_TOKEN`을 함께 넣어두면 access_token이 만료(또는 만료 30분 이내)될 때
+velog 서버가 응답의 `Set-Cookie`로 새 access_token을 내려준다. 이 서버는 이를 메모리에 흡수해
+같은 프로세스에서는 그 뒤로도 계속 인증된 요청을 보낸다.
+
+프로세스 재시작 후에도 갱신된 토큰을 보존하려면 `VELOG_TOKEN_FILE`에 영속화 경로를 지정한다.
+파일이 존재하면 시작 시 env보다 우선 적용된다.
 
 ## Claude Code에 등록
 
 ```bash
 claude mcp add velog \
-  -e VELOG_ACCESS_TOKEN=<여기에_토큰> \
+  -e VELOG_ACCESS_TOKEN=<access_token> \
+  -e VELOG_REFRESH_TOKEN=<refresh_token> \
+  -e VELOG_TOKEN_FILE=$HOME/.config/velog-mcp/tokens.json \
   -- npx -y velog-mcp-server
 ```
 
@@ -73,7 +83,9 @@ printf '%s\n%s\n%s\n' \
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `VELOG_ACCESS_TOKEN` | (없음) | 로그인 쿠키. 인증 도구 사용 시 필수 |
+| `VELOG_ACCESS_TOKEN` | (없음) | `access_token` 쿠키. 인증 도구 사용 시 (refresh_token만 줘도 자동 발급 가능) |
+| `VELOG_REFRESH_TOKEN` | (없음) | `refresh_token` 쿠키. 있으면 만료된 access_token을 서버가 자동 갱신해 응답 |
+| `VELOG_TOKEN_FILE` | (없음) | 갱신된 토큰을 영속화할 JSON 경로. 존재 시 시작 때 env보다 우선 |
 | `VELOG_ENDPOINT` | `https://v3.velog.io/graphql` | GraphQL endpoint 오버라이드 |
 
 ## 주의

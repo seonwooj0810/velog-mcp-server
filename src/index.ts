@@ -2,9 +2,75 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const VELOG_ENDPOINT = process.env.VELOG_ENDPOINT ?? "https://v3.velog.io/graphql";
-const VELOG_ACCESS_TOKEN = process.env.VELOG_ACCESS_TOKEN ?? "";
+const VELOG_TOKEN_FILE = process.env.VELOG_TOKEN_FILE;
+
+let accessToken = process.env.VELOG_ACCESS_TOKEN ?? "";
+let refreshToken = process.env.VELOG_REFRESH_TOKEN ?? "";
+
+// Token file overrides env on startup so a previously refreshed pair survives restarts.
+if (VELOG_TOKEN_FILE) {
+  try {
+    const raw = fs.readFileSync(VELOG_TOKEN_FILE, "utf8");
+    const saved = JSON.parse(raw) as { access_token?: string; refresh_token?: string };
+    if (saved.access_token) accessToken = saved.access_token;
+    if (saved.refresh_token) refreshToken = saved.refresh_token;
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("[velog-mcp] failed to read VELOG_TOKEN_FILE:", e);
+    }
+  }
+}
+
+function persistTokens() {
+  if (!VELOG_TOKEN_FILE) return;
+  try {
+    fs.mkdirSync(path.dirname(VELOG_TOKEN_FILE), { recursive: true });
+    fs.writeFileSync(
+      VELOG_TOKEN_FILE,
+      JSON.stringify({ access_token: accessToken, refresh_token: refreshToken }, null, 2),
+      { mode: 0o600 },
+    );
+  } catch (e) {
+    console.error("[velog-mcp] failed to persist tokens:", e);
+  }
+}
+
+function getSetCookies(headers: Headers): string[] {
+  const anyHeaders = headers as unknown as { getSetCookie?: () => string[] };
+  if (typeof anyHeaders.getSetCookie === "function") return anyHeaders.getSetCookie();
+  const raw = headers.get("set-cookie");
+  return raw ? [raw] : [];
+}
+
+function absorbRefreshedTokens(headers: Headers) {
+  let changed = false;
+  for (const sc of getSetCookies(headers)) {
+    const m = /^(access_token|refresh_token)=([^;]*)/.exec(sc);
+    if (!m) continue;
+    const [, name, value] = m;
+    if (!value) {
+      // Server cleared the cookie (e.g. refresh_token invalid → logged out).
+      // Don't clobber memory, but surface it so the user knows why subsequent calls fail.
+      console.error(`[velog-mcp] server cleared ${name} cookie — token likely invalid/expired`);
+      continue;
+    }
+    if (name === "access_token" && value !== accessToken) {
+      accessToken = value;
+      changed = true;
+    } else if (name === "refresh_token" && value !== refreshToken) {
+      refreshToken = value;
+      changed = true;
+    }
+  }
+  if (changed) {
+    console.error("[velog-mcp] tokens refreshed by server");
+    persistTokens();
+  }
+}
 
 type GqlResponse<T> = { data?: T; errors?: { message: string }[] };
 
@@ -13,20 +79,23 @@ async function velogRequest<T>(
   variables: Record<string, unknown>,
   requireAuth = false,
 ): Promise<T> {
-  if (requireAuth && !VELOG_ACCESS_TOKEN) {
+  if (requireAuth && !accessToken && !refreshToken) {
     throw new Error(
-      "VELOG_ACCESS_TOKEN is not set. Add it to the MCP server env to use authenticated tools.",
+      "VELOG_ACCESS_TOKEN (or VELOG_REFRESH_TOKEN) is not set. Add it to the MCP server env to use authenticated tools.",
     );
   }
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (VELOG_ACCESS_TOKEN) {
-    headers["Cookie"] = `access_token=${VELOG_ACCESS_TOKEN}`;
-  }
+  const cookieParts: string[] = [];
+  if (accessToken) cookieParts.push(`access_token=${accessToken}`);
+  if (refreshToken) cookieParts.push(`refresh_token=${refreshToken}`);
+  if (cookieParts.length) headers["Cookie"] = cookieParts.join("; ");
+
   const res = await fetch(VELOG_ENDPOINT, {
     method: "POST",
     headers,
     body: JSON.stringify({ query, variables }),
   });
+  absorbRefreshedTokens(res.headers);
   if (!res.ok) {
     throw new Error(`Velog HTTP ${res.status}: ${await res.text()}`);
   }
