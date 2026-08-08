@@ -22,8 +22,11 @@
     "velog-mcp-server": "dist/index.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
+  },
+  "overrides": {
+    "@hono/node-server": "^2.0.5"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
